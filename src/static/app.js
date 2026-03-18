@@ -10,30 +10,89 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch("/activities");
       const activities = await response.json();
 
-      // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = ""; // 기존 옵션 초기화
 
-      // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
 
-        const spotsLeft = details.max_participants - details.participants.length;
+        const participants = details.participants || [];
+        const spotsLeft = details.max_participants - participants.length;
+
+        // Participants list markup
+        let participantsMarkup = "";
+        if (details.participants && details.participants.length > 0) {
+          participantsMarkup = `
+            <div class="participants-section">
+              <strong>Participants:</strong>
+              <ul class="participants-list no-bullets">
+                ${details.participants.map(
+                  (email) => `
+                    <li class="participant-item">
+                      <span class="participant-email">${email}</span>
+                      <button class="delete-participant" title="Remove participant" data-activity="${name}" data-email="${email}">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="10" cy="10" r="10" fill="#ffebee"/>
+                          <path d="M6 6L14 14M14 6L6 14" stroke="#c62828" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                      </button>
+                    </li>
+                  `
+                ).join("")}
+              </ul>
+            </div>
+          `;
+        } else {
+          participantsMarkup = `
+            <div class="participants-section empty">
+              <strong>Participants:</strong>
+              <span class="no-participants">No participants yet</span>
+            </div>
+          `;
+        }
 
         activityCard.innerHTML = `
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          ${participantsMarkup}
         `;
 
         activitiesList.appendChild(activityCard);
 
-        // Add option to select dropdown
         const option = document.createElement("option");
         option.value = name;
         option.textContent = name;
         activitySelect.appendChild(option);
+      });
+
+      // 삭제 아이콘 클릭 이벤트 위임
+      activitiesList.querySelectorAll(".delete-participant").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          const activity = btn.getAttribute("data-activity");
+          const email = btn.getAttribute("data-email");
+          if (!activity || !email) return;
+          if (!confirm(`Unregister ${email} from ${activity}?`)) return;
+          try {
+            const response = await fetch(
+              `/activities/${encodeURIComponent(activity)}/signup?email=${encodeURIComponent(email)}`,
+              {
+                method: "DELETE",
+              }
+            );
+            if (response.ok) {
+              fetchActivities(); // 새로고침
+            } else {
+              const result = await response.json();
+              alert(result.detail || "Failed to unregister participant.");
+            }
+          } catch (error) {
+            alert("Failed to unregister participant. Please try again.");
+          }
+        });
       });
     } catch (error) {
       activitiesList.innerHTML = "<p>Failed to load activities. Please try again later.</p>";
@@ -62,6 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        fetchActivities(); // 참가자 등록 후 활동 목록 갱신
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
